@@ -153,12 +153,16 @@
                     <i id="simSoundIcon" data-lucide="bell" class="w-3 h-3"></i>
                   </button>
                   <!-- 縮小為膠囊 -->
-                  <button id="btnSimCollapse" title="收合為簡約膠囊" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
+                  <button id="btnSimCollapse" title="縮小為簡約膠囊" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
                     <i data-lucide="minimize-2" class="w-3 h-3"></i>
                   </button>
                   <!-- 半透明切換 -->
                   <button id="btnSimGhost" title="切換半透明模式" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
                     <i data-lucide="eye" class="w-3 h-3"></i>
+                  </button>
+                  <!-- 關閉懸浮計時器 -->
+                  <button id="btnSimClose" title="關閉計時器 (可隨時喚醒)" class="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition">
+                    <i data-lucide="x" class="w-3 h-3"></i>
                   </button>
                 </div>
               </div>
@@ -198,17 +202,28 @@
               <!-- 收合狀態下的微型膠囊 -->
               <div id="overlayMiniPill" class="hidden items-center justify-between gap-2 py-0.5">
                 <span id="miniTimeText" class="font-mono text-sm font-bold text-emerald-400 tabular-nums">15:00</span>
-                <button id="btnSimExpand" class="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white">
-                  <i data-lucide="maximize-2" class="w-3 h-3"></i>
-                </button>
+                <div class="flex items-center gap-1">
+                  <button id="btnSimExpand" class="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white">
+                    <i data-lucide="maximize-2" class="w-3 h-3"></i>
+                  </button>
+                  <button id="btnSimMiniClose" class="p-1 rounded-md hover:bg-rose-500/20 text-slate-400 hover:text-rose-400" title="關閉計時器">
+                    <i data-lucide="x" class="w-3 h-3"></i>
+                  </button>
+                </div>
               </div>
 
             </div>
 
+            <!-- 計時器關閉後的重新開啟浮動按鈕 -->
+            <button id="btnSimReopen" class="hidden absolute top-6 right-6 z-30 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xl items-center gap-1.5 transition active:scale-95 cursor-pointer">
+              <i data-lucide="play-circle" class="w-4 h-4"></i>
+              <span>重新開啟計時器</span>
+            </button>
+
             <!-- 提示標籤 -->
             <div class="absolute bottom-3 left-4 text-[11px] text-slate-400 flex items-center gap-1 bg-slate-900/80 px-2 py-1 rounded-md border border-slate-800">
               <i data-lucide="hand" class="w-3.5 h-3.5 text-indigo-400"></i>
-              可隨意拖曳上方計時器，或按「5s 測鐘」測試音效
+              右上角有「✕」可隨時關閉，亦可按「Alt + T」隨時重新叫出
             </div>
 
           </div>
@@ -316,8 +331,8 @@
               <span>選擇「<strong>分頁</strong>」或「<strong>單一視窗</strong>」分享簡報，Meet 會自動過濾掉覆蓋層，聽眾只會看到乾淨投影片，只有你能看見計時器！</span>
             </div>
             <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-start gap-2">
-              <span class="text-amber-400 font-bold">● 找不到懸浮窗：</span>
-              <span>隨時在簡報分頁按下快捷鍵 <kbd class="px-1 py-0.5 bg-slate-900 text-amber-300 font-mono rounded">Alt + T</kbd>，懸浮視窗會立刻回到右上角。</span>
+              <span class="text-rose-400 font-bold">● 關閉與重新喚醒：</span>
+              <span>懸浮窗右上角點 <kbd class="px-1.5 py-0.5 bg-slate-900 text-rose-300 font-mono rounded">✕</kbd> 或點選擴充功能選單即可完全關閉；需要時在簡報分頁按下 <kbd class="px-1.5 py-0.5 bg-slate-900 text-amber-300 font-mono rounded">Alt + T</kbd> 即可瞬間重新開啟。</span>
             </div>
           </div>
         </div>
@@ -603,7 +618,7 @@
       content_js: {
         filename: 'content.js',
         content: `// ========================================================
-// Presentation Timer - Content Script (含預設與自訂 MP3 引擎)
+// Presentation Timer - Content Script (支援關閉、隱藏與自訂 MP3 引擎)
 // ========================================================
 
 (function () {
@@ -649,6 +664,7 @@
       color: #94a3b8;
     }
     .timer-header:active { cursor: grabbing; }
+    .timer-actions { display: flex; align-items: center; gap: 2px; }
     .timer-actions button {
       background: none;
       border: none;
@@ -659,6 +675,7 @@
       border-radius: 4px;
     }
     .timer-actions button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .timer-actions button.btn-close:hover { background: rgba(244, 63, 94, 0.25); color: #f43f5e; }
     .timer-body { padding: 12px 16px; text-align: center; }
     .time-val {
       font-family: "JetBrains Mono", Consolas, monospace;
@@ -711,7 +728,7 @@
   \`;
   shadow.appendChild(style);
 
-  // 3. 建立懸浮視窗 DOM
+  // 3. 建立懸浮視窗 DOM (包含關閉按鈕)
   const widget = document.createElement('div');
   widget.className = 'timer-widget';
   widget.innerHTML = \`
@@ -721,6 +738,7 @@
         <button id="btnSound" class="sound-active" title="鐘聲開啟/靜音">🔔</button>
         <button id="btnMini" title="縮小為膠囊">—</button>
         <button id="btnGhost" title="切換半透明">👁</button>
+        <button id="btnClose" class="btn-close" title="關閉計時器 (隨時按 Alt+T 可喚回)">✕</button>
       </div>
     </div>
     <div class="timer-body" id="expandedBody">
@@ -734,7 +752,10 @@
     </div>
     <div class="pill-mode" id="pillBody">
       <div class="time-val" id="pillTime">15:00</div>
-      <button class="btn btn-secondary" id="btnExpand" style="flex:0; padding:3px 8px;">⛶</button>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <button class="btn btn-secondary" id="btnExpand" style="flex:0; padding:3px 8px;">⛶</button>
+        <button id="btnMiniClose" class="btn-close" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:12px; padding:2px 4px;" title="關閉計時器">✕</button>
+      </div>
     </div>
   \`;
   shadow.appendChild(widget);
@@ -755,7 +776,7 @@
   document.addEventListener('fullscreenchange', attachHostToTopLayer);
   window.addEventListener('DOMContentLoaded', attachHostToTopLayer);
 
-  // 5. 音效核心 (支援封裝 alarm.mp3 或使用者於 Popup 上傳之 base64)
+  // 5. 音效核心
   let audioPlayer = null;
   let isSoundEnabled = true;
   let customBase64Audio = null;
@@ -773,7 +794,7 @@
   }
 
   function playAlertSound() {
-    if (!isSoundEnabled) return;
+    if (!isSoundEnabled || !isVisible) return;
     stopAlertSound();
     try {
       if (!audioPlayer) refreshAudioSource();
@@ -813,14 +834,24 @@
     } catch(e) {}
   }
 
-  // 6. 狀態管理
+  // 6. 狀態管理 (含可視/關閉狀態 isVisible)
   let totalSec = 15 * 60;
   let remainSec = totalSec;
   let isRunning = false;
   let timerId = null;
+  let isVisible = true;
+
+  function setVisibility(show) {
+    isVisible = show;
+    widget.style.display = isVisible ? 'block' : 'none';
+    if (!isVisible) stopAlertSound();
+    if (window.chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ timerVisible: isVisible });
+    }
+  }
 
   if (window.chrome && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['defaultDuration', 'soundEnabled', 'customAudioBase64'], (res) => {
+    chrome.storage.local.get(['defaultDuration', 'soundEnabled', 'customAudioBase64', 'timerVisible'], (res) => {
       if (res) {
         if (res.defaultDuration) {
           totalSec = res.defaultDuration;
@@ -833,6 +864,9 @@
         if (res.customAudioBase64) {
           customBase64Audio = res.customAudioBase64;
           refreshAudioSource();
+        }
+        if (typeof res.timerVisible === 'boolean') {
+          setVisibility(res.timerVisible);
         }
         render();
       }
@@ -849,6 +883,8 @@
   const btnExpand = shadow.getElementById('btnExpand');
   const btnGhost = shadow.getElementById('btnGhost');
   const btnSound = shadow.getElementById('btnSound');
+  const btnClose = shadow.getElementById('btnClose');
+  const btnMiniClose = shadow.getElementById('btnMiniClose');
   const expandedBody = shadow.getElementById('expandedBody');
   const pillBody = shadow.getElementById('pillBody');
   const dragHeader = shadow.getElementById('dragHeader');
@@ -915,6 +951,10 @@
   btnReset.addEventListener('click', () => reset());
   btnAdd1.addEventListener('click', () => { remainSec += 60; render(); });
 
+  // 關閉計時器監聽
+  btnClose.addEventListener('click', () => setVisibility(false));
+  btnMiniClose.addEventListener('click', () => setVisibility(false));
+
   btnSound.addEventListener('click', () => {
     isSoundEnabled = !isSoundEnabled;
     btnSound.className = isSoundEnabled ? 'sound-active' : '';
@@ -928,7 +968,7 @@
   btnMini.addEventListener('click', () => {
     expandedBody.style.display = 'none';
     pillBody.style.display = 'flex';
-    widget.style.width = '140px';
+    widget.style.width = '160px';
   });
   btnExpand.addEventListener('click', () => {
     expandedBody.style.display = 'block';
@@ -944,6 +984,7 @@
   let startX, startY, initLeft, initTop;
 
   dragHeader.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
@@ -965,9 +1006,10 @@
 
   window.addEventListener('mouseup', () => { isDragging = false; });
 
-  // 8. 快捷鍵 Alt + T
+  // 8. 快捷鍵 Alt + T：重新喚醒並置於右上角
   window.addEventListener('keydown', (e) => {
     if (e.altKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
+      setVisibility(true);
       widget.style.left = 'auto';
       widget.style.right = '30px';
       widget.style.top = '30px';
@@ -979,10 +1021,24 @@
     }
   });
 
-  // 9. 監聽 Popup 訊息
+  // 9. 監聽 Popup 訊息 (支援切換關閉/開啟)
   if (window.chrome && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-      if (msg.action === 'reset_position') {
+      if (msg.action === 'show_timer') {
+        setVisibility(true);
+        attachHostToTopLayer();
+        widget.style.left = 'auto';
+        widget.style.right = '30px';
+        widget.style.top = '30px';
+        sendResponse({ status: 'ok', visible: true });
+      } else if (msg.action === 'hide_timer') {
+        setVisibility(false);
+        sendResponse({ status: 'ok', visible: false });
+      } else if (msg.action === 'toggle_visibility') {
+        setVisibility(!isVisible);
+        sendResponse({ status: 'ok', visible: isVisible });
+      } else if (msg.action === 'reset_position') {
+        setVisibility(true);
         attachHostToTopLayer();
         widget.style.left = 'auto';
         widget.style.right = '30px';
@@ -1064,17 +1120,30 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 12px;
-      transition: background 0.2s;
+      transition: all 0.2s;
       margin-bottom: 8px;
     }
+    .btn-toggle-vis {
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      color: #fb7185;
+      font-weight: 700;
+    }
+    .btn-toggle-vis:hover { background: rgba(244, 63, 94, 0.25); }
+    .btn-toggle-vis.is-hidden {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      color: #34d399;
+    }
+    .btn-toggle-vis.is-hidden:hover { background: rgba(16, 185, 129, 0.3); }
     .btn-primary { background: #6366f1; color: white; }
     .btn-primary:hover { background: #4f46e5; }
     .btn-amber { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
     .btn-amber:hover { background: rgba(245, 158, 11, 0.25); }
     .btn-secondary { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; }
     .btn-secondary:hover { background: #334155; color: white; }
-    .btn-danger { background: #334155; color: #e2e8f0; }
-    .btn-danger:hover { background: #475569; }
+    .btn-danger { background: #1e293b; border: 1px solid #334155; color: #94a3b8; }
+    .btn-danger:hover { background: #334155; color: #e2e8f0; }
     .audio-box {
       background: #1e293b;
       border: 1px dashed #475569;
@@ -1106,6 +1175,9 @@
 <body>
   <h2>⏱ 簡報懸浮計時器</h2>
   <p>自選時長與提醒音效</p>
+
+  <!-- 關閉 / 開啟開關按鈕 -->
+  <button class="btn btn-toggle-vis" id="btnToggleVis">❌ 關閉 / 隱藏懸浮計時器</button>
   
   <div class="row">
     <div class="col">
@@ -1131,10 +1203,10 @@
   </div>
 
   <button class="btn btn-amber" id="btnTestBell">🔔 立即試聽音效</button>
-  <button class="btn btn-danger" id="btnResetPos">🎯 找不到懸浮窗？重設至右上角</button>
+  <button class="btn btn-danger" id="btnResetPos">🎯 重新開啟並重設至右上角</button>
 
   <div class="shortcuts">
-    <div>⌨️ <strong>快捷鍵</strong>：按 <kbd>Alt + T</kbd> 隨時召回懸浮球。</div>
+    <div>💡 <strong>關閉後喚回</strong>：按快捷鍵 <kbd>Alt + T</kbd> 隨時重新開啟。</div>
   </div>
   <script src="popup.js"><\/script>
 </body>
@@ -1153,9 +1225,12 @@
   }
 }
 
-// 載入儲存的自訂音效或時長
+// 載入狀態 (含關閉/開啟顯示狀態)
+const btnToggleVis = document.getElementById('btnToggleVis');
+let isTimerVisible = true;
+
 if (chrome && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['defaultDuration', 'customAudioName'], (res) => {
+  chrome.storage.local.get(['defaultDuration', 'customAudioName', 'timerVisible'], (res) => {
     if (res.defaultDuration) {
       document.getElementById('inpMin').value = Math.floor(res.defaultDuration / 60);
       document.getElementById('inpSec').value = res.defaultDuration % 60;
@@ -1164,8 +1239,32 @@ if (chrome && chrome.storage && chrome.storage.local) {
       document.getElementById('currentSoundLabel').textContent = res.customAudioName;
       document.getElementById('btnRevertSound').style.display = 'block';
     }
+    if (typeof res.timerVisible === 'boolean') {
+      isTimerVisible = res.timerVisible;
+      updateVisBtn();
+    }
   });
 }
+
+function updateVisBtn() {
+  if (isTimerVisible) {
+    btnToggleVis.textContent = '❌ 關閉 / 隱藏懸浮計時器';
+    btnToggleVis.className = 'btn btn-toggle-vis';
+  } else {
+    btnToggleVis.textContent = '✅ 開啟 / 顯示懸浮計時器';
+    btnToggleVis.className = 'btn btn-toggle-vis is-hidden';
+  }
+}
+
+// 點擊關閉 / 開啟按鈕
+btnToggleVis.addEventListener('click', () => {
+  isTimerVisible = !isTimerVisible;
+  updateVisBtn();
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ timerVisible: isTimerVisible });
+  }
+  sendToActiveTab({ action: isTimerVisible ? 'show_timer' : 'hide_timer' });
+});
 
 document.getElementById('btnSave').addEventListener('click', () => {
   const min = parseInt(document.getElementById('inpMin').value) || 15;
@@ -1230,7 +1329,11 @@ document.getElementById('btnTestBell').addEventListener('click', () => {
 });
 
 document.getElementById('btnResetPos').addEventListener('click', () => {
-  sendToActiveTab({ action: 'reset_position' });
+  isTimerVisible = true;
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ timerVisible: true });
+  }
+  sendToActiveTab({ action: 'show_timer' });
   window.close();
 });`
       }
@@ -1340,12 +1443,50 @@ document.getElementById('btnResetPos').addEventListener('click', () => {
     const overlayMiniPill = document.getElementById('overlayMiniPill');
     const miniTimeText = document.getElementById('miniTimeText');
     const simSoundIcon = document.getElementById('simSoundIcon');
+    const btnSimClose = document.getElementById('btnSimClose');
+    const btnSimMiniClose = document.getElementById('btnSimMiniClose');
+    const btnSimReopen = document.getElementById('btnSimReopen');
 
     let simTotal = 15 * 60;
     let simRemain = simTotal;
     let simRunning = false;
     let simTimerInterval = null;
     let simSoundEnabled = true;
+
+    // 關閉計時器
+    function closeSimOverlay() {
+      simOverlay.classList.add('hidden');
+      btnSimReopen.classList.remove('hidden');
+      btnSimReopen.classList.add('flex');
+      stopAllAudio();
+      showToast('懸浮計時器已關閉！可隨時按「重新開啟」或快捷鍵 Alt + T 喚回');
+    }
+
+    // 重新開啟計時器
+    function reopenSimOverlay() {
+      simOverlay.classList.remove('hidden');
+      btnSimReopen.classList.add('hidden');
+      btnSimReopen.classList.remove('flex');
+      simOverlay.style.left = 'auto';
+      simOverlay.style.right = '24px';
+      simOverlay.style.top = '24px';
+      overlayBody.classList.remove('hidden');
+      overlayMiniPill.classList.add('hidden');
+      overlayMiniPill.classList.remove('flex');
+      simOverlay.style.width = '250px';
+      showToast('懸浮計時器已重新開啟！');
+    }
+
+    btnSimClose.addEventListener('click', closeSimOverlay);
+    btnSimMiniClose.addEventListener('click', closeSimOverlay);
+    btnSimReopen.addEventListener('click', reopenSimOverlay);
+
+    // 鍵盤 Alt + T 喚醒模擬
+    window.addEventListener('keydown', (e) => {
+      if (e.altKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
+        reopenSimOverlay();
+      }
+    });
 
     function formatSec(s) {
       const isNeg = s < 0;
