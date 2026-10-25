@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentation Timer Extension 簡報懸浮計時擴充功能</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- JSZip 用於客戶端打包下載擴充程式 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- 頂部導覽列 -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i data-lucide="bell-ring" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base md:text-lg leading-tight">簡報懸浮計時器</h1>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-medium">V1.4 雙模音效版</span>
+          </div>
+          <p class="text-xs text-slate-400">支援 Google Slides / Canva / 投影全螢幕置頂置中</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- 試聽鐘聲按鈕 -->
+        <button id="btnTestChime" class="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs sm:text-sm px-3.5 py-2 rounded-xl transition active:scale-95 cursor-pointer">
+          <i id="chimeIcon" data-lucide="volume-2" class="w-4 h-4 text-amber-400"></i>
+          <span id="chimeBtnText">試聽提示音</span>
+        </button>
+
+        <!-- 一鍵下載擴充套件 ZIP -->
+        <button id="btnDownloadZip" class="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium text-xs sm:text-sm px-4 py-2 rounded-xl shadow-lg shadow-teal-500/20 transition active:scale-95 cursor-pointer">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>一鍵下載擴充程式 ZIP</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 浮動提示訊息 (Toast) -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-indigo-600 text-white shadow-xl text-xs sm:text-sm">
+    <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+    <span id="toastMessage">已更新！</span>
+  </div>
+
+  <!-- 主要內容區 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- 上半部：實機模擬器 (左) + 核心安裝與會議指引 (右) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- 左半邊：實機模擬器與音效設定 (7 欄) -->
+      <div class="lg:col-span-7 space-y-4">
+        
+        <!-- 模擬簡報播放器視窗 -->
+        <div class="rounded-3xl bg-slate-900 border border-slate-800 p-4 shadow-2xl relative flex flex-col">
+          
+          <!-- 模擬瀏覽器視窗頂部標籤列 -->
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3 text-xs text-slate-400">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-rose-500/70 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-amber-500/70 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-emerald-500/70 inline-block"></span>
+              <span class="ml-2 font-mono text-slate-400 text-[11px] truncate max-w-[200px] sm:max-w-none">
+                https://docs.google.com/presentation/d/.../present
+              </span>
+            </div>
+            <span id="soundBadgeText" class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[11px] font-medium flex items-center gap-1">
+              <i data-lucide="music" class="w-3 h-3"></i> 預設簡報鐘聲就緒
+            </span>
+          </div>
+
+          <!-- 簡報畫布區 -->
+          <div id="slideCanvasArea" class="relative w-full h-[380px] sm:h-[420px] bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950/40 rounded-2xl border border-slate-800/70 overflow-hidden flex flex-col justify-between p-6 select-none">
+            
+            <!-- 模擬簡報背景內容 -->
+            <div class="pointer-events-none space-y-2">
+              <span class="text-[11px] uppercase tracking-widest font-bold text-indigo-400">Presentation Stage</span>
+              <h2 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug">
+                演講倒數與提示鐘聲展示
+              </h2>
+              <p class="text-xs text-slate-400 max-w-sm leading-relaxed">
+                全螢幕投影簡報時，懸浮計時器將永遠保持置頂，倒數歸零時自動響起提醒。
+              </p>
+            </div>
+
+            <div class="pointer-events-none flex items-center justify-between pt-4 border-t border-slate-800/60 text-xs text-slate-500">
+              <span>Slide 3 of 18</span>
+              <span class="flex items-center gap-1.5 text-slate-400">
+                <i data-lucide="bell" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span id="canvasAudioLabel">音效：預設簡報鐘聲</span>
+              </span>
+            </div>
+
+            <!-- ================= 模擬懸浮元件 ================= -->
+            <div id="simulatedOverlay" class="absolute top-6 right-6 z-30 transition-shadow rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-3 flex flex-col gap-2 cursor-grab active:cursor-grabbing text-white" style="width: 250px;">
+              
+              <!-- 懸浮視窗拖曳把手與控制按鈕 -->
+              <div id="overlayHeader" class="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800 text-xs text-slate-400 select-none">
+                <div class="flex items-center gap-1.5 font-medium text-slate-300">
+                  <i data-lucide="grip-horizontal" class="w-3.5 h-3.5 text-slate-500"></i>
+                  <span class="text-[11px] font-mono tracking-wide">TIMER</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <!-- 靜音/音效切換 -->
+                  <button id="btnSimSoundToggle" title="鐘聲開啟/靜音" class="p-1 rounded-lg hover:bg-slate-800 text-amber-400 transition">
+                    <i id="simSoundIcon" data-lucide="bell" class="w-3 h-3"></i>
+                  </button>
+                  <!-- 縮小為膠囊 -->
+                  <button id="btnSimCollapse" title="收合為簡約膠囊" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
+                    <i data-lucide="minimize-2" class="w-3 h-3"></i>
+                  </button>
+                  <!-- 半透明切換 -->
+                  <button id="btnSimGhost" title="切換半透明模式" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
+                    <i data-lucide="eye" class="w-3 h-3"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 展開狀態的倒數面板 -->
+              <div id="overlayBody" class="space-y-2">
+                <div class="text-center py-1">
+                  <div id="simTimeDisplay" class="font-mono text-3xl font-extrabold tracking-tight tabular-nums text-emerald-400">
+                    15:00
+                  </div>
+                  <div class="flex items-center justify-center gap-1 text-[10px] text-slate-400 mt-0.5">
+                    <span id="simStatusDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                    <span id="simStatusLabel">準備就緒 (時間到響鐘)</span>
+                  </div>
+                </div>
+
+                <!-- 線性進度條 -->
+                <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div id="simProgressBar" class="h-full bg-emerald-400 rounded-full transition-all duration-300" style="width: 100%;"></div>
+                </div>
+
+                <!-- 播放控制按鈕 -->
+                <div class="flex items-center justify-center gap-1.5 pt-1">
+                  <button id="btnSimReset" title="重設" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition">
+                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button id="btnSimPlay" class="flex-1 py-1 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-xs flex items-center justify-center gap-1 text-white shadow-sm transition">
+                    <i id="simPlayIcon" data-lucide="play" class="w-3 h-3 fill-current"></i>
+                    <span id="simPlayText">開始</span>
+                  </button>
+                  <button id="btnSimQuickTest" title="快速測試：倒數 5 秒" class="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-[11px] font-mono text-amber-300 border border-amber-500/30 transition">
+                    5s 測鐘
+                  </button>
+                </div>
+              </div>
+
+              <!-- 收合狀態下的微型膠囊 -->
+              <div id="overlayMiniPill" class="hidden items-center justify-between gap-2 py-0.5">
+                <span id="miniTimeText" class="font-mono text-sm font-bold text-emerald-400 tabular-nums">15:00</span>
+                <button id="btnSimExpand" class="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white">
+                  <i data-lucide="maximize-2" class="w-3 h-3"></i>
+                </button>
+              </div>
+
+            </div>
+
+            <!-- 提示標籤 -->
+            <div class="absolute bottom-3 left-4 text-[11px] text-slate-400 flex items-center gap-1 bg-slate-900/80 px-2 py-1 rounded-md border border-slate-800">
+              <i data-lucide="hand" class="w-3.5 h-3.5 text-indigo-400"></i>
+              可隨意拖曳上方計時器，或按「5s 測鐘」測試音效
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- 音效管理與自訂卡片 (保留預設 + 開放自訂 MP3) -->
+        <div class="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                <i data-lucide="music-2" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold text-white">簡報結束提示音效管理</h3>
+                <p id="audioStatusText" class="text-[11px] text-slate-400">目前採用：<span class="text-amber-300 font-medium">預設簡報鐘聲 (已封裝)</span></p>
+              </div>
+            </div>
+
+            <!-- 更換音檔操作按鈕 -->
+            <div class="flex items-center gap-2">
+              <input type="file" id="customAudioInput" accept="audio/*" class="hidden">
+              <button id="btnTriggerUpload" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition active:scale-95 cursor-pointer">
+                <i data-lucide="upload" class="w-3.5 h-3.5 text-indigo-400"></i>
+                <span>選用我的 MP3</span>
+              </button>
+              <button id="btnResetAudio" class="hidden items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs border border-rose-500/30 transition">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                <span>恢復預設</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 leading-relaxed flex items-start gap-2">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5"></i>
+            <div>
+              <strong>音效特色說明</strong>：已內建高音質預設鐘聲，點擊下載時會自動將音效打包至擴充功能目錄，支援離線零延遲發聲。若您上傳自己的 MP3，下載的 ZIP 會優先封裝您的個人音樂！
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 右半邊：主要畫面「30 秒安裝指南」+「Google Meet 分享技巧」 (5 欄) -->
+      <div class="lg:col-span-5 space-y-4">
+
+        <!-- 30 秒安裝指南面板 (直接陳列，不隱藏) -->
+        <div class="rounded-3xl bg-slate-900 border border-slate-800 p-5 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex items-center gap-2.5 text-indigo-400">
+              <div class="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">
+                <i data-lucide="package-check" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-sm sm:text-base font-bold text-white">30 秒載入 Chrome 擴充功能指南</h2>
+                <p class="text-xs text-slate-400">免安裝商店，解壓即可即刻啟用</p>
+              </div>
+            </div>
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-medium">超簡單</span>
+          </div>
+
+          <!-- 3 步驟安裝清單 -->
+          <div class="space-y-3 text-xs text-slate-300">
+            <div class="p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-md shadow-indigo-600/30">1</span>
+              <div>
+                <strong class="text-white block mb-0.5">下載並解壓縮擴充套件包</strong>
+                點擊上方綠色按鈕「<strong>一鍵下載擴充程式 ZIP</strong>」，下載後將檔案解壓縮至資料夾（如 <code class="px-1.5 py-0.5 rounded bg-slate-900 font-mono text-indigo-300">presentation-timer</code>）。
+              </div>
+            </div>
+
+            <div class="p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-md shadow-indigo-600/30">2</span>
+              <div>
+                <strong class="text-white block mb-0.5">打開瀏覽器擴充功能頁</strong>
+                在 Chrome / Edge 網址列輸入並前往：
+                <code class="block mt-1 px-2 py-1 rounded bg-slate-900 text-amber-300 font-mono text-[11px] select-all cursor-pointer">chrome://extensions/</code>
+                並開啟右上角的「<strong>開發人員模式</strong>」開關。
+              </div>
+            </div>
+
+            <div class="p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-md shadow-indigo-600/30">3</span>
+              <div>
+                <strong class="text-white block mb-0.5">載入未封裝項目</strong>
+                點選左上角「<strong>載入未封裝項目</strong>」，選取剛剛解壓縮的資料夾。前往 Google 簡報或 Canva 按 <kbd class="px-1.5 py-0.5 rounded bg-slate-900 text-indigo-300 font-mono">F5</kbd> 重新整理即可使用！
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Meet / 全螢幕投影技巧面板 -->
+        <div class="rounded-3xl bg-slate-900/70 border border-slate-800/90 p-4 space-y-3">
+          <h3 class="text-xs font-bold text-white flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4 text-emerald-400"></i>
+            會議分享投影技巧 (Google Meet / Zoom)
+          </h3>
+          <div class="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+            <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">● 想讓所有人看見：</span>
+              <span>在 Meet 點選分享時選擇「<strong>你的整個螢幕</strong>」，大家就能即時同步看到簡報上的倒數懸浮視窗。</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-start gap-2">
+              <span class="text-indigo-400 font-bold">● 僅自己看（私密配速）：</span>
+              <span>選擇「<strong>分頁</strong>」或「<strong>單一視窗</strong>」分享簡報，Meet 會自動過濾掉覆蓋層，聽眾只會看到乾淨投影片，只有你能看見計時器！</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-start gap-2">
+              <span class="text-amber-400 font-bold">● 找不到懸浮窗：</span>
+              <span>隨時在簡報分頁按下快捷鍵 <kbd class="px-1 py-0.5 bg-slate-900 text-amber-300 font-mono rounded">Alt + T</kbd>，懸浮視窗會立刻回到右上角。</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- 下半部：原始程式碼檢視區（預設收折，點擊展開） -->
+    <div class="rounded-3xl bg-slate-900/60 border border-slate-800 overflow-hidden shadow-xl">
+      <!-- 收折標題列按鈕 -->
+      <button id="btnToggleCodeSection" class="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-800/40 transition">
+        <div class="flex items-center gap-2.5">
+          <div class="p-1.5 rounded-lg bg-slate-800 text-indigo-400 border border-slate-700/60">
+            <i data-lucide="code-2" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              擴充功能源始代碼檢視器
+              <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-normal">進階開發者專用</span>
+            </h3>
+            <p class="text-xs text-slate-400">點擊展開以查看或個別複製各模組檔案</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span id="codeToggleText">展開代碼</span>
+          <i id="codeToggleChevron" data-lucide="chevron-down" class="w-4 h-4 transition-transform duration-200"></i>
+        </div>
+      </button>
+
+      <!-- 折疊內容區 (預設隱藏 hidden) -->
+      <div id="codeSectionContent" class="hidden p-5 border-t border-slate-800/80 bg-slate-900 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <!-- 檔案分頁標籤 -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <button data-file="manifest" class="file-tab px-3 py-1.5 rounded-lg font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 transition whitespace-nowrap">
+              manifest.json
+            </button>
+            <button data-file="content_js" class="file-tab px-3 py-1.5 rounded-lg font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition whitespace-nowrap">
+              content.js
+            </button>
+            <button data-file="content_css" class="file-tab px-3 py-1.5 rounded-lg font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition whitespace-nowrap">
+              content.css
+            </button>
+            <button data-file="popup_html" class="file-tab px-3 py-1.5 rounded-lg font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition whitespace-nowrap">
+              popup.html
+            </button>
+            <button data-file="popup_js" class="file-tab px-3 py-1.5 rounded-lg font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition whitespace-nowrap">
+              popup.js
+            </button>
+          </div>
+
+          <button id="btnCopyFile" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-slate-700 transition">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>複製當前檔案代碼</span>
+          </button>
+        </div>
+
+        <!-- 程式碼展示框 -->
+        <div class="relative bg-slate-950 rounded-2xl border border-slate-800 p-4 max-h-[420px] overflow-auto">
+          <pre class="font-mono text-xs text-slate-300 leading-relaxed"><code id="codeViewer"></code></pre>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // 初始化 Lucide 圖標
+    lucide.createIcons();
+
+    // ========================================================
+    // 音效核心架構：支援內建預設鐘聲 + 使用者自選 MP3
+    // ========================================================
+    const DEFAULT_AUDIO_URL = 'https://files.catbox.moe/6vlqa4.mp3';
+    let currentAudioUrl = DEFAULT_AUDIO_URL;
+    let customUploadedBlob = null; // 儲存使用者上傳的 Blob 物件供 ZIP 打包
+    let customUploadedName = '';
+
+    let globalAudioPlayer = new Audio(currentAudioUrl);
+    globalAudioPlayer.preload = 'auto';
+
+    // 備用合成音階
+    let globalAudioCtx = null;
+    let activeChimeNodes = [];
+
+    function getAudioContext() {
+      if (!globalAudioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        globalAudioCtx = new AudioContext();
+      }
+      if (globalAudioCtx.state === 'suspended') {
+        globalAudioCtx.resume();
+      }
+      return globalAudioCtx;
+    }
+
+    function stopChimeNodes() {
+      activeChimeNodes.forEach(node => {
+        try { node.stop(); } catch(e) {}
+      });
+      activeChimeNodes = [];
+    }
+
+    function stopAllAudio() {
+      if (globalAudioPlayer) {
+        globalAudioPlayer.pause();
+        globalAudioPlayer.currentTime = 0;
+        globalAudioPlayer.onended = null;
+      }
+      stopChimeNodes();
+    }
+
+    function playCurrentSound(onEndCallback) {
+      stopAllAudio();
+      try {
+        globalAudioPlayer.currentTime = 0;
+        const playPromise = globalAudioPlayer.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            if (onEndCallback) {
+              globalAudioPlayer.onended = () => {
+                onEndCallback();
+                globalAudioPlayer.onended = null;
+              };
+            }
+          }).catch(err => {
+            console.warn('音檔播放受限，轉由備用合成引擎播放:', err);
+            playSynthesizedChime(onEndCallback);
+          });
+        }
+      } catch (e) {
+        playSynthesizedChime(onEndCallback);
+      }
+    }
+
+    // 備用四樂句合成鐘聲
+    function playSynthesizedChime(onEndCallback) {
+      stopChimeNodes();
+      const ctx = getAudioContext();
+      const t0 = ctx.currentTime + 0.05;
+      const sequence = [
+        { f: 349.23, t: 0.00, d: 1.5 },
+        { f: 440.00, t: 0.85, d: 1.5 },
+        { f: 392.00, t: 1.70, d: 1.5 },
+        { f: 261.63, t: 2.55, d: 2.2 }
+      ];
+      sequence.forEach(item => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.setValueAtTime(item.f, t0 + item.t);
+        gain.gain.setValueAtTime(0.001, t0 + item.t);
+        gain.gain.linearRampToValueAtTime(0.3, t0 + item.t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + item.t + item.d);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0 + item.t);
+        osc.stop(t0 + item.t + item.d);
+        activeChimeNodes.push(osc);
+      });
+      if (onEndCallback) setTimeout(onEndCallback, 4500);
+    }
+
+    // ========================================================
+    // 自訂 MP3 上傳與切換處理
+    // ========================================================
+    const customAudioInput = document.getElementById('customAudioInput');
+    const btnTriggerUpload = document.getElementById('btnTriggerUpload');
+    const btnResetAudio = document.getElementById('btnResetAudio');
+    const audioStatusText = document.getElementById('audioStatusText');
+    const canvasAudioLabel = document.getElementById('canvasAudioLabel');
+    const soundBadgeText = document.getElementById('soundBadgeText');
+
+    btnTriggerUpload.addEventListener('click', () => customAudioInput.click());
+
+    customAudioInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      customUploadedBlob = file;
+      customUploadedName = file.name;
+      currentAudioUrl = URL.createObjectURL(file);
+
+      // 更新播放器
+      stopAllAudio();
+      globalAudioPlayer = new Audio(currentAudioUrl);
+
+      // 更新 UI 呈現
+      audioStatusText.innerHTML = `目前採用：<span class="text-indigo-400 font-medium">個人自訂音效 (${customUploadedName})</span>`;
+      canvasAudioLabel.textContent = `音效：${customUploadedName}`;
+      soundBadgeText.innerHTML = `<i data-lucide="music" class="w-3 h-3"></i> 自選 MP3 就緒`;
+      btnResetAudio.classList.remove('hidden');
+      btnResetAudio.classList.add('flex');
+      lucide.createIcons();
+
+      showToast(`已載入音效：${customUploadedName}，下載時將自動封裝！`);
+    });
+
+    btnResetAudio.addEventListener('click', () => {
+      stopAllAudio();
+      customUploadedBlob = null;
+      customUploadedName = '';
+      currentAudioUrl = DEFAULT_AUDIO_URL;
+      globalAudioPlayer = new Audio(DEFAULT_AUDIO_URL);
+
+      audioStatusText.innerHTML = `目前採用：<span class="text-amber-300 font-medium">預設簡報鐘聲 (已封裝)</span>`;
+      canvasAudioLabel.textContent = `音效：預設簡報鐘聲`;
+      soundBadgeText.innerHTML = `<i data-lucide="music" class="w-3 h-3"></i> 預設簡報鐘聲就緒`;
+      btnResetAudio.classList.add('hidden');
+      btnResetAudio.classList.remove('flex');
+      customAudioInput.value = '';
+      lucide.createIcons();
+
+      showToast('已恢復預設簡報鐘聲');
+    });
+
+    // 試聽按鈕控制
+    let isChimePlaying = false;
+    const btnTestChime = document.getElementById('btnTestChime');
+    const chimeBtnText = document.getElementById('chimeBtnText');
+
+    function togglePreviewChime() {
+      if (!isChimePlaying) {
+        isChimePlaying = true;
+        chimeBtnText.textContent = '停止播放';
+        btnTestChime.classList.add('bg-amber-500/30');
+        showToast('正在播放提示鐘聲...');
+        playCurrentSound(() => {
+          isChimePlaying = false;
+          chimeBtnText.textContent = '試聽提示音';
+          btnTestChime.classList.remove('bg-amber-500/30');
+        });
+      } else {
+        stopAllAudio();
+        isChimePlaying = false;
+        chimeBtnText.textContent = '試聽提示音';
+        btnTestChime.classList.remove('bg-amber-500/30');
+        showToast('已停止播放');
+      }
+    }
+    btnTestChime.addEventListener('click', togglePreviewChime);
+
+    // ========================================================
+    // 擴充程式源碼定義 (Manifest V3 且支援自選 MP3 與預設鐘聲)
+    // ========================================================
+    const EXTENSION_FILES = {
+      manifest: {
+        filename: 'manifest.json',
+        content: JSON.stringify({
+          "manifest_version": 3,
+          "name": "簡報懸浮計時器 (含自選與預設鐘聲)",
+          "version": "1.4.0",
+          "description": "全螢幕簡報播放時置頂懸浮顯示倒數計時器，時間到自動播放提示鐘聲，支援更換自訂 MP3",
+          "permissions": ["storage", "activeTab"],
+          "action": {
+            "default_popup": "popup.html",
+            "default_title": "簡報計時器設定"
+          },
+          "content_scripts": [
+            {
+              "matches": ["<all_urls>"],
+              "all_frames": true,
+              "match_origin_as_fallback": true,
+              "js": ["content.js"],
+              "css": ["content.css"],
+              "run_at": "document_idle"
+            }
+          ],
+          "web_accessible_resources": [
+            {
+              "resources": ["alarm.mp3", "icons/*"],
+              "matches": ["<all_urls>"]
+            }
+          ],
+          "icons": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+          }
+        }, null, 2)
+      },
+
+      content_js: {
+        filename: 'content.js',
+        content: `// ========================================================
+// Presentation Timer - Content Script (含預設與自訂 MP3 引擎)
+// ========================================================
+
+(function () {
+  if (window.__PRESENTATION_TIMER_INJECTED__) return;
+  window.__PRESENTATION_TIMER_INJECTED__ = true;
+
+  // 1. 建立 Host 容器與隔離 Shadow DOM
+  const host = document.createElement('div');
+  host.id = 'presentation-timer-host';
+  const shadow = host.attachShadow({ mode: 'open' });
+
+  // 2. 注入隔離樣式
+  const style = document.createElement('style');
+  style.textContent = \`
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .timer-widget {
+      position: fixed;
+      top: 30px;
+      right: 30px;
+      z-index: 2147483647 !important;
+      background: rgba(15, 23, 42, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 18px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7);
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      width: 250px;
+      user-select: none;
+      touch-action: none;
+      pointer-events: auto !important;
+      transition: opacity 0.2s ease;
+    }
+    .timer-header {
+      padding: 10px 14px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: grab;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .timer-header:active { cursor: grabbing; }
+    .timer-actions button {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+    .timer-actions button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .timer-body { padding: 12px 16px; text-align: center; }
+    .time-val {
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: #34d399;
+      line-height: 1.1;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #34d399;
+      width: 100%;
+      transition: width 0.3s ease;
+    }
+    .controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    .btn {
+      flex: 1;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: #6366f1; color: white; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: #cbd5e1; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.18); color: white; }
+    .pill-mode {
+      display: none;
+      padding: 8px 14px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pill-mode .time-val { font-size: 18px; }
+    .ghost { opacity: 0.3 !important; }
+    .overtime { color: #f43f5e !important; }
+    .warn { color: #fbbf24 !important; }
+    .sound-active { color: #f59e0b !important; }
+  \`;
+  shadow.appendChild(style);
+
+  // 3. 建立懸浮視窗 DOM
+  const widget = document.createElement('div');
+  widget.className = 'timer-widget';
+  widget.innerHTML = \`
+    <div class="timer-header" id="dragHeader">
+      <span>⏱ 簡報計時器</span>
+      <div class="timer-actions">
+        <button id="btnSound" class="sound-active" title="鐘聲開啟/靜音">🔔</button>
+        <button id="btnMini" title="縮小為膠囊">—</button>
+        <button id="btnGhost" title="切換半透明">👁</button>
+      </div>
+    </div>
+    <div class="timer-body" id="expandedBody">
+      <div class="time-val" id="timeText">15:00</div>
+      <div class="progress-bar"><div class="progress-fill" id="barFill"></div></div>
+      <div class="controls">
+        <button class="btn btn-secondary" id="btnReset" title="重設">↺</button>
+        <button class="btn btn-primary" id="btnPlay">開始</button>
+        <button class="btn btn-secondary" id="btnAdd1">+1m</button>
+      </div>
+    </div>
+    <div class="pill-mode" id="pillBody">
+      <div class="time-val" id="pillTime">15:00</div>
+      <button class="btn btn-secondary" id="btnExpand" style="flex:0; padding:3px 8px;">⛶</button>
+    </div>
+  \`;
+  shadow.appendChild(widget);
+
+  // 4. 動態穿透掛載核心 (支援全螢幕自動置頂)
+  function attachHostToTopLayer() {
+    try {
+      const targetParent = document.fullscreenElement || document.body || document.documentElement;
+      if (targetParent && !targetParent.contains(host)) {
+        targetParent.appendChild(host);
+      }
+    } catch (e) {
+      document.documentElement.appendChild(host);
+    }
+  }
+
+  attachHostToTopLayer();
+  document.addEventListener('fullscreenchange', attachHostToTopLayer);
+  window.addEventListener('DOMContentLoaded', attachHostToTopLayer);
+
+  // 5. 音效核心 (支援封裝 alarm.mp3 或使用者於 Popup 上傳之 base64)
+  let audioPlayer = null;
+  let isSoundEnabled = true;
+  let customBase64Audio = null;
+
+  function refreshAudioSource() {
+    if (customBase64Audio) {
+      audioPlayer = new Audio(customBase64Audio);
+    } else {
+      try {
+        if (window.chrome && chrome.runtime && chrome.runtime.getURL) {
+          audioPlayer = new Audio(chrome.runtime.getURL('alarm.mp3'));
+        }
+      } catch (e) {}
+    }
+  }
+
+  function playAlertSound() {
+    if (!isSoundEnabled) return;
+    stopAlertSound();
+    try {
+      if (!audioPlayer) refreshAudioSource();
+      if (audioPlayer) {
+        audioPlayer.currentTime = 0;
+        audioPlayer.play().catch(err => {
+          console.warn('音檔播放受阻，降級為 Web Audio 音效', err);
+          playToneFallback();
+        });
+      } else {
+        playToneFallback();
+      }
+    } catch (e) {
+      playToneFallback();
+    }
+  }
+
+  function stopAlertSound() {
+    if (audioPlayer) {
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+    }
+  }
+
+  function playToneFallback() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 1.2);
+    } catch(e) {}
+  }
+
+  // 6. 狀態管理
+  let totalSec = 15 * 60;
+  let remainSec = totalSec;
+  let isRunning = false;
+  let timerId = null;
+
+  if (window.chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['defaultDuration', 'soundEnabled', 'customAudioBase64'], (res) => {
+      if (res) {
+        if (res.defaultDuration) {
+          totalSec = res.defaultDuration;
+          remainSec = totalSec;
+        }
+        if (typeof res.soundEnabled === 'boolean') {
+          isSoundEnabled = res.soundEnabled;
+          btnSound.className = isSoundEnabled ? 'sound-active' : '';
+        }
+        if (res.customAudioBase64) {
+          customBase64Audio = res.customAudioBase64;
+          refreshAudioSource();
+        }
+        render();
+      }
+    });
+  }
+
+  const timeText = shadow.getElementById('timeText');
+  const pillTime = shadow.getElementById('pillTime');
+  const barFill = shadow.getElementById('barFill');
+  const btnPlay = shadow.getElementById('btnPlay');
+  const btnReset = shadow.getElementById('btnReset');
+  const btnAdd1 = shadow.getElementById('btnAdd1');
+  const btnMini = shadow.getElementById('btnMini');
+  const btnExpand = shadow.getElementById('btnExpand');
+  const btnGhost = shadow.getElementById('btnGhost');
+  const btnSound = shadow.getElementById('btnSound');
+  const expandedBody = shadow.getElementById('expandedBody');
+  const pillBody = shadow.getElementById('pillBody');
+  const dragHeader = shadow.getElementById('dragHeader');
+
+  function fmt(s) {
+    const isNeg = s < 0;
+    const abs = Math.abs(s);
+    const m = String(Math.floor(abs / 60)).padStart(2, '0');
+    const sec = String(abs % 60).padStart(2, '0');
+    return (isNeg ? '+' : '') + m + ':' + sec;
+  }
+
+  function render() {
+    const text = fmt(remainSec);
+    timeText.textContent = text;
+    pillTime.textContent = text;
+
+    let p = totalSec > 0 ? Math.max(0, Math.min(100, (remainSec / totalSec) * 100)) : 0;
+    barFill.style.width = p + '%';
+
+    if (remainSec < 0) {
+      timeText.className = 'time-val overtime';
+      pillTime.className = 'time-val overtime';
+      barFill.style.background = '#f43f5e';
+    } else if (remainSec <= 120) {
+      timeText.className = 'time-val warn';
+      pillTime.className = 'time-val warn';
+      barFill.style.background = '#fbbf24';
+    } else {
+      timeText.className = 'time-val';
+      pillTime.className = 'time-val';
+      barFill.style.background = '#34d399';
+    }
+  }
+
+  function toggle() {
+    if (isRunning) {
+      clearInterval(timerId);
+      isRunning = false;
+      btnPlay.textContent = '繼續';
+      stopAlertSound();
+    } else {
+      isRunning = true;
+      btnPlay.textContent = '暫停';
+      timerId = setInterval(() => {
+        remainSec--;
+        if (remainSec === 0) playAlertSound();
+        render();
+      }, 1000);
+    }
+  }
+
+  function reset(newTotal) {
+    clearInterval(timerId);
+    stopAlertSound();
+    isRunning = false;
+    if (newTotal) totalSec = newTotal;
+    remainSec = totalSec;
+    btnPlay.textContent = '開始';
+    render();
+  }
+
+  btnPlay.addEventListener('click', toggle);
+  btnReset.addEventListener('click', () => reset());
+  btnAdd1.addEventListener('click', () => { remainSec += 60; render(); });
+
+  btnSound.addEventListener('click', () => {
+    isSoundEnabled = !isSoundEnabled;
+    btnSound.className = isSoundEnabled ? 'sound-active' : '';
+    if (isSoundEnabled) playAlertSound();
+    else stopAlertSound();
+    if (window.chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ soundEnabled: isSoundEnabled });
+    }
+  });
+
+  btnMini.addEventListener('click', () => {
+    expandedBody.style.display = 'none';
+    pillBody.style.display = 'flex';
+    widget.style.width = '140px';
+  });
+  btnExpand.addEventListener('click', () => {
+    expandedBody.style.display = 'block';
+    pillBody.style.display = 'none';
+    widget.style.width = '250px';
+  });
+  btnGhost.addEventListener('click', () => {
+    widget.classList.toggle('ghost');
+  });
+
+  // 7. 拖曳機制
+  let isDragging = false;
+  let startX, startY, initLeft, initTop;
+
+  dragHeader.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = widget.getBoundingClientRect();
+    initLeft = rect.left;
+    initTop = rect.top;
+    widget.style.right = 'auto';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const maxLeft = window.innerWidth - widget.offsetWidth - 10;
+    const maxTop = window.innerHeight - widget.offsetHeight - 10;
+    widget.style.left = Math.max(10, Math.min(maxLeft, initLeft + dx)) + 'px';
+    widget.style.top = Math.max(10, Math.min(maxTop, initTop + dy)) + 'px';
+  });
+
+  window.addEventListener('mouseup', () => { isDragging = false; });
+
+  // 8. 快捷鍵 Alt + T
+  window.addEventListener('keydown', (e) => {
+    if (e.altKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
+      widget.style.left = 'auto';
+      widget.style.right = '30px';
+      widget.style.top = '30px';
+      widget.classList.remove('ghost');
+      expandedBody.style.display = 'block';
+      pillBody.style.display = 'none';
+      widget.style.width = '250px';
+      attachHostToTopLayer();
+    }
+  });
+
+  // 9. 監聽 Popup 訊息
+  if (window.chrome && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg.action === 'reset_position') {
+        attachHostToTopLayer();
+        widget.style.left = 'auto';
+        widget.style.right = '30px';
+        widget.style.top = '30px';
+        sendResponse({ status: 'ok' });
+      } else if (msg.action === 'update_duration') {
+        reset(msg.duration);
+        sendResponse({ status: 'ok' });
+      } else if (msg.action === 'play_bell_test') {
+        playAlertSound();
+        sendResponse({ status: 'ok' });
+      } else if (msg.action === 'stop_bell') {
+        stopAlertSound();
+        sendResponse({ status: 'ok' });
+      } else if (msg.action === 'update_audio') {
+        customBase64Audio = msg.base64;
+        refreshAudioSource();
+        sendResponse({ status: 'ok' });
+      }
+    });
+  }
+
+  render();
+})();`
+      },
+
+      content_css: {
+        filename: 'content.css',
+        content: `/* presentation-timer-host 頂層全視窗覆蓋 */
+#presentation-timer-host {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}`
+      },
+
+      popup_html: {
+        filename: 'popup.html',
+        content: `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 290px;
+      margin: 0;
+      padding: 16px;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h2 { font-size: 15px; margin: 0 0 4px; font-weight: 700; color: #818cf8; }
+    p { font-size: 11px; color: #94a3b8; margin: 0 0 12px; }
+    .row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .col { flex: 1; }
+    label { font-size: 11px; color: #cbd5e1; display: block; margin-bottom: 4px; }
+    input[type="number"] {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: white;
+      padding: 6px 8px;
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-family: monospace;
+    }
+    .btn {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.2s;
+      margin-bottom: 8px;
+    }
+    .btn-primary { background: #6366f1; color: white; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-amber { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
+    .btn-amber:hover { background: rgba(245, 158, 11, 0.25); }
+    .btn-secondary { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; }
+    .btn-secondary:hover { background: #334155; color: white; }
+    .btn-danger { background: #334155; color: #e2e8f0; }
+    .btn-danger:hover { background: #475569; }
+    .audio-box {
+      background: #1e293b;
+      border: 1px dashed #475569;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .audio-title { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+    .audio-name { font-size: 11px; font-weight: bold; color: #38bdf8; word-break: break-all; }
+    .shortcuts {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #1e293b;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    kbd {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 1px 4px;
+      border-radius: 4px;
+      color: #cbd5e1;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h2>⏱ 簡報懸浮計時器</h2>
+  <p>自選時長與提醒音效</p>
+  
+  <div class="row">
+    <div class="col">
+      <label>預設分鐘</label>
+      <input type="number" id="inpMin" value="15" min="1" max="999">
+    </div>
+    <div class="col">
+      <label>預設秒數</label>
+      <input type="number" id="inpSec" value="0" min="0" max="59">
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="btnSave">套用時長並重設</button>
+
+  <div class="audio-box">
+    <div class="audio-title">目前提醒音效：</div>
+    <div class="audio-name" id="currentSoundLabel">預設簡報鐘聲</div>
+    <input type="file" id="popAudioInput" accept="audio/*" style="display:none">
+    <div style="display:flex; gap:4px; margin-top:6px;">
+      <button class="btn btn-secondary" id="btnChangeSound" style="margin-bottom:0; padding:4px 6px;">更換 MP3</button>
+      <button class="btn btn-secondary" id="btnRevertSound" style="margin-bottom:0; padding:4px 6px; display:none;">恢復預設</button>
+    </div>
+  </div>
+
+  <button class="btn btn-amber" id="btnTestBell">🔔 立即試聽音效</button>
+  <button class="btn btn-danger" id="btnResetPos">🎯 找不到懸浮窗？重設至右上角</button>
+
+  <div class="shortcuts">
+    <div>⌨️ <strong>快捷鍵</strong>：按 <kbd>Alt + T</kbd> 隨時召回懸浮球。</div>
+  </div>
+  <script src="popup.js"><\/script>
+</body>
+</html>`
+      },
+
+      popup_js: {
+        filename: 'popup.js',
+        content: `function sendToActiveTab(msg) {
+  if (chrome && chrome.tabs) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        chrome.tabs.sendMessage(tabs[0].id, msg, () => {});
+      }
+    });
+  }
+}
+
+// 載入儲存的自訂音效或時長
+if (chrome && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get(['defaultDuration', 'customAudioName'], (res) => {
+    if (res.defaultDuration) {
+      document.getElementById('inpMin').value = Math.floor(res.defaultDuration / 60);
+      document.getElementById('inpSec').value = res.defaultDuration % 60;
+    }
+    if (res.customAudioName) {
+      document.getElementById('currentSoundLabel').textContent = res.customAudioName;
+      document.getElementById('btnRevertSound').style.display = 'block';
+    }
+  });
+}
+
+document.getElementById('btnSave').addEventListener('click', () => {
+  const min = parseInt(document.getElementById('inpMin').value) || 15;
+  const sec = parseInt(document.getElementById('inpSec').value) || 0;
+  const total = min * 60 + sec;
+
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ defaultDuration: total }, () => {
+      sendToActiveTab({ action: 'update_duration', duration: total });
+      window.close();
+    });
+  } else {
+    sendToActiveTab({ action: 'update_duration', duration: total });
+    window.close();
+  }
+});
+
+// 使用者可在已安裝的 Popup 中更換自訂 MP3
+const popAudioInput = document.getElementById('popAudioInput');
+document.getElementById('btnChangeSound').addEventListener('click', () => popAudioInput.click());
+
+popAudioInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const base64 = evt.target.result;
+    if (chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ customAudioBase64: base64, customAudioName: file.name }, () => {
+        document.getElementById('currentSoundLabel').textContent = file.name;
+        document.getElementById('btnRevertSound').style.display = 'block';
+        sendToActiveTab({ action: 'update_audio', base64: base64 });
+      });
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+// 恢復為預設簡報鐘聲
+document.getElementById('btnRevertSound').addEventListener('click', () => {
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.remove(['customAudioBase64', 'customAudioName'], () => {
+      document.getElementById('currentSoundLabel').textContent = '預設簡報鐘聲';
+      document.getElementById('btnRevertSound').style.display = 'none';
+      sendToActiveTab({ action: 'update_audio', base64: null });
+    });
+  }
+});
+
+let isPlaying = false;
+document.getElementById('btnTestBell').addEventListener('click', () => {
+  if (!isPlaying) {
+    sendToActiveTab({ action: 'play_bell_test' });
+    document.getElementById('btnTestBell').textContent = '⏹ 停止播放';
+    isPlaying = true;
+  } else {
+    sendToActiveTab({ action: 'stop_bell' });
+    document.getElementById('btnTestBell').textContent = '🔔 立即試聽音效';
+    isPlaying = false;
+  }
+});
+
+document.getElementById('btnResetPos').addEventListener('click', () => {
+  sendToActiveTab({ action: 'reset_position' });
+  window.close();
+});`
+      }
+    };
+
+    // ========================================================
+    // 一鍵生成 ZIP 擴充套件包並下載 (優先打包自訂或預設 MP3)
+    // ========================================================
+    function createIconBlob(size) {
+      return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#6366f1';
+        ctx.beginPath();
+        ctx.roundRect(0, 0, size, size, size * 0.22);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(2, size * 0.1);
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size * 0.32, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size * 0.1, 0, 2 * Math.PI);
+        ctx.fill();
+
+        canvas.toBlob((blob) => resolve(blob), 'image/png');
+      });
+    }
+
+    document.getElementById('btnDownloadZip').addEventListener('click', async () => {
+      const btn = document.getElementById('btnDownloadZip');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>封裝專案與音檔中...</span>`;
+      lucide.createIcons();
+
+      try {
+        const zip = new JSZip();
+
+        zip.file('manifest.json', EXTENSION_FILES.manifest.content);
+        zip.file('content.js', EXTENSION_FILES.content_js.content);
+        zip.file('content.css', EXTENSION_FILES.content_css.content);
+        zip.file('popup.html', EXTENSION_FILES.popup_html.content);
+        zip.file('popup.js', EXTENSION_FILES.popup_js.content);
+
+        // 打包音檔：若使用者有上傳自選 MP3 則打包該音檔；否則抓取內建預設鐘聲
+        if (customUploadedBlob) {
+          zip.file('alarm.mp3', customUploadedBlob);
+        } else {
+          try {
+            const audioResp = await fetch(DEFAULT_AUDIO_URL);
+            if (audioResp.ok) {
+              const audioBlob = await audioResp.blob();
+              zip.file('alarm.mp3', audioBlob);
+            }
+          } catch (fetchErr) {
+            console.warn('預設音檔打包失敗，擴充功能將在執行時連線或使用備用音效', fetchErr);
+          }
+        }
+
+        const iconsFolder = zip.folder('icons');
+        const icon16Blob = await createIconBlob(16);
+        const icon48Blob = await createIconBlob(48);
+        const icon128Blob = await createIconBlob(128);
+
+        iconsFolder.file('icon16.png', icon16Blob);
+        iconsFolder.file('icon48.png', icon48Blob);
+        iconsFolder.file('icon128.png', icon128Blob);
+
+        const content = await zip.generateAsync({ type: 'blob' });
+        const downloadUrl = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'presentation-timer-extension.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+
+        showToast('擴充功能 ZIP（含音檔）已完成下載！');
+      } catch (err) {
+        console.error(err);
+        showToast('打包失敗，請直接展開下方複製代碼');
+      } finally {
+        btn.innerHTML = originalHTML;
+        lucide.createIcons();
+      }
+    });
+
+    // ========================================================
+    // 實機懸浮預覽區互動邏輯
+    // ========================================================
+    const simOverlay = document.getElementById('simulatedOverlay');
+    const overlayHeader = document.getElementById('overlayHeader');
+    const slideCanvas = document.getElementById('slideCanvasArea');
+    const simTimeDisplay = document.getElementById('simTimeDisplay');
+    const simProgressBar = document.getElementById('simProgressBar');
+    const simStatusDot = document.getElementById('simStatusDot');
+    const simStatusLabel = document.getElementById('simStatusLabel');
+    const simPlayIcon = document.getElementById('simPlayIcon');
+    const simPlayText = document.getElementById('simPlayText');
+    const overlayBody = document.getElementById('overlayBody');
+    const overlayMiniPill = document.getElementById('overlayMiniPill');
+    const miniTimeText = document.getElementById('miniTimeText');
+    const simSoundIcon = document.getElementById('simSoundIcon');
+
+    let simTotal = 15 * 60;
+    let simRemain = simTotal;
+    let simRunning = false;
+    let simTimerInterval = null;
+    let simSoundEnabled = true;
+
+    function formatSec(s) {
+      const isNeg = s < 0;
+      const abs = Math.abs(s);
+      const m = String(Math.floor(abs / 60)).padStart(2, '0');
+      const sec = String(abs % 60).padStart(2, '0');
+      return (isNeg ? '+' : '') + `${m}:${sec}`;
+    }
+
+    function renderSimUI() {
+      const text = formatSec(simRemain);
+      simTimeDisplay.textContent = text;
+      miniTimeText.textContent = text;
+
+      let pct = simTotal > 0 ? Math.max(0, Math.min(100, (simRemain / simTotal) * 100)) : 0;
+      simProgressBar.style.width = `${pct}%`;
+
+      if (simRemain < 0) {
+        simTimeDisplay.className = 'font-mono text-3xl font-extrabold tracking-tight tabular-nums text-rose-400 animate-pulse';
+        miniTimeText.className = 'font-mono text-sm font-bold text-rose-400 tabular-nums';
+        simProgressBar.className = 'h-full bg-rose-500 rounded-full transition-all duration-300';
+        simStatusDot.className = 'w-1.5 h-1.5 rounded-full bg-rose-400 inline-block animate-ping';
+        simStatusLabel.textContent = '超時中 (提示音已播放)';
+      } else if (simRemain <= 120 && simRemain > 0) {
+        simTimeDisplay.className = 'font-mono text-3xl font-extrabold tracking-tight tabular-nums text-amber-300';
+        miniTimeText.className = 'font-mono text-sm font-bold text-amber-300 tabular-nums';
+        simProgressBar.className = 'h-full bg-amber-400 rounded-full transition-all duration-300';
+        simStatusDot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 inline-block';
+        simStatusLabel.textContent = '剩餘不到 2 分鐘';
+      } else {
+        simTimeDisplay.className = 'font-mono text-3xl font-extrabold tracking-tight tabular-nums text-emerald-400';
+        miniTimeText.className = 'font-mono text-sm font-bold text-emerald-400 tabular-nums';
+        simProgressBar.className = 'h-full bg-emerald-400 rounded-full transition-all duration-300';
+        simStatusDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block';
+        simStatusLabel.textContent = simRunning ? '進行中 (時間到響鐘)' : '準備就緒';
+      }
+    }
+
+    function toggleSimTimer() {
+      if (simRunning) {
+        clearInterval(simTimerInterval);
+        simRunning = false;
+        simPlayText.textContent = '繼續';
+        simPlayIcon.setAttribute('data-lucide', 'play');
+        stopAllAudio();
+      } else {
+        simRunning = true;
+        simPlayText.textContent = '暫停';
+        simPlayIcon.setAttribute('data-lucide', 'pause');
+        simTimerInterval = setInterval(() => {
+          simRemain--;
+          if (simRemain === 0 && simSoundEnabled) {
+            playCurrentSound();
+            showToast('🔔 時間到！播放提示鐘聲');
+          }
+          renderSimUI();
+        }, 1000);
+      }
+      lucide.createIcons();
+      renderSimUI();
+    }
+
+    function resetSimTimer() {
+      clearInterval(simTimerInterval);
+      stopAllAudio();
+      simRunning = false;
+      simRemain = simTotal;
+      simPlayText.textContent = '開始';
+      simPlayIcon.setAttribute('data-lucide', 'play');
+      lucide.createIcons();
+      renderSimUI();
+    }
+
+    document.getElementById('btnSimPlay').addEventListener('click', toggleSimTimer);
+    document.getElementById('btnSimReset').addEventListener('click', resetSimTimer);
+
+    document.getElementById('btnSimQuickTest').addEventListener('click', () => {
+      clearInterval(simTimerInterval);
+      simTotal = 5;
+      simRemain = 5;
+      simRunning = false;
+      toggleSimTimer();
+      showToast('倒數 5 秒測試：請等待提示音響起');
+    });
+
+    document.getElementById('btnSimSoundToggle').addEventListener('click', () => {
+      simSoundEnabled = !simSoundEnabled;
+      if (simSoundEnabled) {
+        document.getElementById('btnSimSoundToggle').classList.add('text-amber-400');
+        document.getElementById('btnSimSoundToggle').classList.remove('text-slate-500');
+        simSoundIcon.setAttribute('data-lucide', 'bell');
+        showToast('提示音已開啟');
+      } else {
+        stopAllAudio();
+        document.getElementById('btnSimSoundToggle').classList.remove('text-amber-400');
+        document.getElementById('btnSimSoundToggle').classList.add('text-slate-500');
+        simSoundIcon.setAttribute('data-lucide', 'bell-off');
+        showToast('提示音已靜音');
+      }
+      lucide.createIcons();
+    });
+
+    document.getElementById('btnSimCollapse').addEventListener('click', () => {
+      overlayBody.classList.add('hidden');
+      overlayMiniPill.classList.remove('hidden');
+      overlayMiniPill.classList.add('flex');
+      simOverlay.style.width = '140px';
+    });
+    document.getElementById('btnSimExpand').addEventListener('click', () => {
+      overlayMiniPill.classList.add('hidden');
+      overlayMiniPill.classList.remove('flex');
+      overlayBody.classList.remove('hidden');
+      simOverlay.style.width = '250px';
+    });
+
+    document.getElementById('btnSimGhost').addEventListener('click', () => {
+      simOverlay.classList.toggle('opacity-30');
+    });
+
+    // 拖曳邏輯
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    overlayHeader.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button')) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const rect = simOverlay.getBoundingClientRect();
+      const parentRect = slideCanvas.getBoundingClientRect();
+      initialLeft = rect.left - parentRect.left;
+      initialTop = rect.top - parentRect.top;
+      simOverlay.style.right = 'auto';
+      simOverlay.style.left = `${initialLeft}px`;
+      simOverlay.style.top = `${initialTop}px`;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - dragStartX;
+      const deltaY = e.clientY - dragStartY;
+      const parentRect = slideCanvas.getBoundingClientRect();
+      let newLeft = Math.max(10, Math.min(parentRect.width - simOverlay.offsetWidth - 10, initialLeft + deltaX));
+      let newTop = Math.max(10, Math.min(parentRect.height - simOverlay.offsetHeight - 10, initialTop + deltaY));
+      simOverlay.style.left = `${newLeft}px`;
+      simOverlay.style.top = `${newTop}px`;
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    // ========================================================
+    // 程式碼檢視區收折與標籤切換
+    // ========================================================
+    const btnToggleCodeSection = document.getElementById('btnToggleCodeSection');
+    const codeSectionContent = document.getElementById('codeSectionContent');
+    const codeToggleChevron = document.getElementById('codeToggleChevron');
+    const codeToggleText = document.getElementById('codeToggleText');
+    let isCodeExpanded = false;
+
+    btnToggleCodeSection.addEventListener('click', () => {
+      isCodeExpanded = !isCodeExpanded;
+      if (isCodeExpanded) {
+        codeSectionContent.classList.remove('hidden');
+        codeToggleChevron.classList.add('rotate-180');
+        codeToggleText.textContent = '收起代碼';
+        updateCodeView(currentSelectedFile);
+      } else {
+        codeSectionContent.classList.add('hidden');
+        codeToggleChevron.classList.remove('rotate-180');
+        codeToggleText.textContent = '展開代碼';
+      }
+    });
+
+    let currentSelectedFile = 'content_js';
+    const codeViewer = document.getElementById('codeViewer');
+    const fileTabs = document.querySelectorAll('.file-tab');
+
+    function updateCodeView(fileKey) {
+      currentSelectedFile = fileKey;
+      codeViewer.textContent = EXTENSION_FILES[fileKey].content;
+      fileTabs.forEach(tab => {
+        if (tab.getAttribute('data-file') === fileKey) {
+          tab.className = 'file-tab px-3 py-1.5 rounded-lg font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 transition whitespace-nowrap';
+        } else {
+          tab.className = 'file-tab px-3 py-1.5 rounded-lg font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition whitespace-nowrap';
+        }
+      });
+    }
+
+    fileTabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        const key = e.currentTarget.getAttribute('data-file');
+        updateCodeView(key);
+      });
+    });
+
+    document.getElementById('btnCopyFile').addEventListener('click', () => {
+      const textToCopy = EXTENSION_FILES[currentSelectedFile].content;
+      const textarea = document.createElement('textarea');
+      textarea.value = textToCopy;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast(`已複製 ${EXTENSION_FILES[currentSelectedFile].filename}！`);
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const toastMessage = document.getElementById('toastMessage');
+      toastMessage.textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2500);
+    }
+
+    renderSimUI();
+  </script>
+</body>
+</html>
